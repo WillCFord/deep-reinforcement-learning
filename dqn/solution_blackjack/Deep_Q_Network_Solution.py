@@ -1,4 +1,4 @@
-
+#!/home/nuck/.virtualenvs/udacity_drl_py3/bin/python
 # coding: utf-8
 
 # # Deep Q-Network (DQN)
@@ -7,7 +7,7 @@
 # 
 # ### 1. Import the Necessary Packages
 
-# In[1]:
+# In[45]:
 
 
 import gym
@@ -16,17 +16,16 @@ import torch
 import numpy as np
 from collections import deque
 import matplotlib.pyplot as plt
-# get_ipython().magic('matplotlib inline')
 
 
 # ### 2. Instantiate the Environment and Agent
 # 
 # Initialize the environment in the code cell below.
 
-# In[ ]:
+# In[46]:
 
 
-env = gym.make('LunarLander-v2')
+env = gym.make('Blackjack-v0')
 env.seed(0)
 print('State shape: ', env.observation_space.shape)
 print('Number of actions: ', env.action_space.n)
@@ -34,23 +33,28 @@ print('Number of actions: ', env.action_space.n)
 
 # Please refer to the instructions in `Deep_Q_Network.ipynb` if you would like to write your own DQN agent.  Otherwise, run the code cell below to load the solution files.
 
-# In[3]:
+# In[47]:
 
 
 from dqn_agent import Agent
 
-agent = Agent(state_size=8, action_size=4, seed=0)
-
+agent = Agent(state_size=3, action_size=2, seed=0)
 # watch an untrained agent
 state = env.reset()
 for j in range(200):
-    action = agent.act(state)
-    env.render()
+    action = agent.act(np.array(state))
+#     env.render()
     state, reward, done, _ = env.step(action)
     if done:
         break 
         
 env.close()
+
+
+# In[48]:
+
+
+np.array(state)
 
 
 # ### 3. Train the Agent with DQN
@@ -59,10 +63,10 @@ env.close()
 # 
 # Alternatively, you can skip to the next step below (**4. Watch a Smart Agent!**), to load the saved model weights from a pre-trained agent.
 
-# In[3]:
+# In[49]:
 
 
-def dqn(n_episodes=20, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+def dqn(n_episodes=2000, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
     """Deep Q-Learning.
     
     Params
@@ -80,7 +84,7 @@ def dqn(n_episodes=20, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995)
         state = env.reset()
         score = 0
         for t in range(max_t):
-            action = agent.act(state, eps)
+            action = agent.act(np.array(state), eps)
             next_state, reward, done, _ = env.step(action)
             agent.step(state, action, reward, next_state, done)
             state = next_state
@@ -91,45 +95,39 @@ def dqn(n_episodes=20, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995)
         scores.append(score)              # save most recent score
         eps = max(eps_end, eps_decay*eps) # decrease epsilon
         print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)), end="")
-        if i_episode % 100 == 0:
+        if i_episode % 50 == 0:
             print('\rEpisode {}\tAverage Score: {:.2f}'.format(i_episode, np.mean(scores_window)))
-        if np.mean(scores_window)>=200.0:
+        if np.mean(scores_window)>=0.0:
             print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode-100, np.mean(scores_window)))
             torch.save(agent.qnetwork_local.state_dict(), 'checkpoint.pth')
             break
     return scores
 
 scores = dqn()
-
+x = np.arange(len(scores))
+y = scores
 # plot the scores
 fig = plt.figure()
 ax = fig.add_subplot(111)
 plt.plot(np.arange(len(scores)), scores)
 plt.ylabel('Score')
 plt.xlabel('Episode #')
-plt.show()
+plt.savefig('output.png')
+# plt.show()
+f = open("data.txt", "w")
+for a,b in zip(x,y):
+    f.write("{} {}\n".format(a,b))
 
-
+f.close()
 # ### 4. Watch a Smart Agent!
 # 
 # In the next code cell, you will load the trained weights from file to watch a smart agent!
 
-# In[4]:
+# In[6]:
 
 
 # load the weights from file
-agent.qnetwork_local.load_state_dict(torch.load('checkpoint.pth'))
-
-for i in range(3):
-    state = env.reset()
-    for j in range(200):
-        action = agent.act(state)
-        env.render()
-        state, reward, done, _ = env.step(action)
-        if done:
-            break 
-            
-env.close()
+# agent.qnetwork_local.load_state_dict(torch.load('checkpoint.pth'))
 
 
 # ### 5. Explore
@@ -138,3 +136,9 @@ env.close()
 # - Amend the various hyperparameters and network architecture to see if you can get your agent to solve the environment faster.  Once you build intuition for the hyperparameters that work well with this environment, try solving a different OpenAI Gym task with discrete actions!
 # - You may like to implement some improvements such as prioritized experience replay, Double DQN, or Dueling DQN! 
 # - Write a blog post explaining the intuition behind the DQN algorithm and demonstrating how to use it to solve an RL environment of your choosing.  
+
+# In[39]:
+
+
+# len(list(agent.memory.memory))
+
