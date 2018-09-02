@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from collections import namedtuple, deque
+from collections import namedtuple, deque, OrderedDict
 
 from model import QNetwork
 
@@ -16,6 +16,14 @@ LR = 5e-4               # learning rate
 UPDATE_EVERY = 4        # how often to update the network
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device('cpu')
+class LastUpdatedOrderedDict(OrderedDict):
+    'Store items in the order the keys were last added'
+
+    def __setitem__(self, key, value):
+        if key in self:
+            del self[key]
+        OrderedDict.__setitem__(self, key, value)
 
 class Agent():
     """Interacts with and learns from the environment."""
@@ -37,6 +45,9 @@ class Agent():
         self.qnetwork_local = QNetwork(state_size, action_size, seed).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size, seed).to(device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
+        self.loss = None
+        self.loss_list = None
+        self.exp = None
 
         # Replay memory
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
@@ -46,13 +57,19 @@ class Agent():
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
         self.memory.add(state, action, reward, next_state, done)
-        
+        self.memory.add2_init(state, action, reward, next_state, done,1)
+
         # Learn every UPDATE_EVERY time steps.
         self.t_step = (self.t_step + 1) % UPDATE_EVERY
         if self.t_step == 0:
             # If enough samples are available in memory, get random subset and learn
-            if len(self.memory) > BATCH_SIZE:
-                experiences = self.memory.sample()
+            #### Original
+#             if len(self.memory) > BATCH_SIZE:
+#                 experiences = self.memory.sample()
+#                 self.learn(experiences, GAMMA)
+            #### Testing
+            if len(self.memory.memory2) > BATCH_SIZE:
+                experiences = self.memory.sample2()
                 self.learn(experiences, GAMMA)
 
     def act(self, state, eps=0.):
@@ -95,6 +112,15 @@ class Agent():
 
         # Compute loss
         loss = F.mse_loss(Q_expected, Q_targets)
+        self.loss=loss
+        loss_list = torch.abs(Q_expected-Q_targets)
+        self.loss_list = loss_list
+#         for s,a,r,n,d,ll in zip(states, actions, rewards, next_states, dones,loss_list):
+#             self.memory.add2(s,a,r,n,d,ll)
+        for i in range(len(states)):
+            self.memory.add2(states[i], actions[i], rewards[i], next_states[i], dones[i],loss_list[i].detach().numpy())
+
+
         # Minimize the loss
         self.optimizer.zero_grad()
         loss.backward()
@@ -135,12 +161,60 @@ class ReplayBuffer:
         self.batch_size = batch_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
         self.seed = random.seed(seed)
-    
+        self.memory2=LastUpdatedOrderedDict()
+
     def add(self, state, action, reward, next_state, done):
         """Add a new experience to memory."""
         e = self.experience(state, action, reward, next_state, done)
         self.memory.append(e)
-    
+    def add2(self, state, action, reward, next_state, done,loss):
+        e = self.experience(state, action, reward, next_state, done)
+        self.memory2[e]=loss
+        while len(self.memory2)>len(self.memory)+1:
+            temp = list(self.memory2.items())[0]
+            del self.memory2[temp[0]]
+
+    def add2_init(self, state, action, reward, next_state, done,loss):
+        e = self.experience(state, action, reward, next_state, done)
+        if not e in self.memory2:
+            self.memory2[e]=loss
+        # while len(self.memory2)>len(self.memory):
+        #     temp = list(self.memory2.items())[0]
+        #     del self.memory2[temp[0]]
+
+
+    def sample2(self):
+        alpha = .5
+        eps = .01
+
+        exps = list(self.memory2.keys())
+        vals = []
+        for i in exps:
+            vals.append(self.memory2[i])
+        # vals = np.asarray(list(self.memory2.values()))
+        # vals = np.reshape(vals, len(vals))
+        vals = np.asarray(vals,float)
+        # p =((vals+eps)**alpha).astype(float)
+        p = ((vals + eps) ** alpha)
+        psum=p.sum()
+        bigP=p/psum
+        bigP = np.reshape(bigP, len(bigP))
+        # x = "bigP sum =",bigP.sum()
+        # print(x)
+        indx = np.random.choice(list(np.arange(len(p))),self.batch_size,replace=False,p=bigP)
+        experiences = []
+        for i in indx:
+            experiences.append(exps[i])
+        states = torch.from_numpy(np.vstack([e.state for e in experiences if e is not None])).float().to(device)
+        actions = torch.from_numpy(np.vstack([e.action for e in experiences if e is not None])).long().to(device)
+        rewards = torch.from_numpy(np.vstack([e.reward for e in experiences if e is not None])).float().to(device)
+        next_states = torch.from_numpy(np.vstack([e.next_state for e in experiences if e is not None])).float().to(device)
+        dones = torch.from_numpy(np.vstack([e.done for e in experiences if e is not None]).astype(np.uint8)).float().to(device)
+
+        return (states, actions, rewards, next_states, dones)
+
+        # return(out)
+
     def sample(self):
         """Randomly sample a batch of experiences from memory."""
         experiences = random.sample(self.memory, k=self.batch_size)
